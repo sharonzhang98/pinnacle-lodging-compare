@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pinnacle 周边住宿对比 · 地图 + 照片</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root {
+      --bg: #f6f4f1;
+      --card: #fff;
+      --ink: #1c1917;
+      --muted: #78716c;
+      --line: #e7e5e4;
+      --accent: #0f766e;
+      --best: #166534;
+      --good: #1d4ed8;
+      --ok: #57534e;
+      --caution: #b45309;
+      --clinic: #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+    header {
+      padding: 18px 20px 12px;
+      border-bottom: 1px solid var(--line);
+      background: var(--card);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    h1 { margin: 0 0 6px; font-size: 1.35rem; }
+    .sub { margin: 0; color: var(--muted); font-size: 0.9rem; }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+      align-items: center;
+    }
+    .toolbar button, .toolbar select {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 999px;
+      padding: 7px 12px;
+      font: inherit;
+      cursor: pointer;
+    }
+    .toolbar button.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 1.15fr 1fr;
+      gap: 0;
+      min-height: calc(100vh - 120px);
+    }
+    #map {
+      height: calc(100vh - 120px);
+      position: sticky;
+      top: 120px;
+      border-right: 1px solid var(--line);
+    }
+    .list {
+      padding: 14px;
+      overflow: auto;
+      max-height: calc(100vh - 120px);
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: border-color .15s, transform .15s;
+    }
+    .card:hover { border-color: #a8a29e; }
+    .card.selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(15,118,110,.18);
+    }
+    .card img.cover {
+      width: 100%;
+      height: 170px;
+      object-fit: cover;
+      display: block;
+      background: #ddd;
+    }
+    .card-body { padding: 12px 14px 14px; }
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .pill {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+    }
+    .pill.best { background: #dcfce7; color: var(--best); border-color: #bbf7d0; }
+    .pill.good { background: #dbeafe; color: var(--good); border-color: #bfdbfe; }
+    .pill.ok { background: #f5f5f4; color: var(--ok); }
+    .pill.caution { background: #ffedd5; color: var(--caution); border-color: #fed7aa; }
+    .pill.airbnb { background: #fff1f2; color: #9f1239; border-color: #fecdd3; }
+    .pill.hotel { background: #f5f3ff; color: #5b21b6; border-color: #ddd6fe; }
+    .name { font-weight: 700; font-size: 1rem; margin: 2px 0 4px; }
+    .meta { color: var(--muted); font-size: 0.85rem; line-height: 1.45; }
+    .thumbs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      padding: 0 14px 12px;
+    }
+    .thumbs img {
+      width: 100%;
+      height: 64px;
+      object-fit: cover;
+      border-radius: 8px;
+      background: #e7e5e4;
+    }
+    .actions { display: flex; gap: 8px; margin-top: 8px; }
+    .actions a {
+      font-size: 0.85rem;
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .legend {
+      margin-left: auto;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+    .leaflet-tooltip.place-tip {
+      background: #111;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+    @media (max-width: 960px) {
+      .layout { grid-template-columns: 1fr; }
+      #map { height: 42vh; position: relative; top: 0; border-right: none; border-bottom: 1px solid var(--line); }
+      .list { max-height: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Pinnacle 周边住宿对比</h1>
+    <p class="sub">地图标注 + 照片快筛 · 诊所 11818 Wilshire Blvd · 预算约 ≤¥1500/晚 · Airbnb 图钉为街区近似位置（精确地址预订后可见）</p>
+    <div class="toolbar">
+      <button type="button" data-filter="all" class="active">全部</button>
+      <button type="button" data-filter="best">优先/值得看</button>
+      <button type="button" data-filter="airbnb">Airbnb</button>
+      <button type="button" data-filter="hotel">酒店</button>
+      <button type="button" data-filter="free">场地免费停车</button>
+      <span class="legend">红点 = 诊所 · 点卡片会定位地图</span>
+    </div>
+  </header>
+  <div class="layout">
+    <div id="map"></div>
+    <div class="list" id="list"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const CLINIC = { lat: 34.0473083, lng: -118.4629784, name: "Pinnacle / CFP 诊所" };
+
+    const OPTIONS = [
+      {
+        id: "ab1",
+        kind: "airbnb",
+        fit: "best",
+        name: "Sleek 2BR/1BA w/Parking",
+        area: "Culver City",
+        driveMin: "15–25 min",
+        price: "≈$205/晚 · $3,273 / 16晚",
+        parking: "free_on_site",
+        parkingNote: "场地停车 + 室外监控",
+        rating: "4.95 · 94 · Superhost",
+        safety: "安静街区，女生友好",
+        pros: "评分高、有监控、预算边缘内",
+        cons: "第二间是上下铺",
+        lat: 34.0219, lng: -118.3965,
+        url: "https://www.airbnb.com/rooms/1134063815811220149",
+        photos: [
+          "https://a0.muscache.com/im/pictures/miso/Hosting-1134063815811220149/original/50fae515-e2fb-4557-a3ab-be502b604ca2.jpeg?im_w=720",
+          "https://a0.muscache.com/im/pictures/miso/Hosting-1134063815811220149/original/1dff17d4-1b87-4a58-b1bf-a287dbd5125d.jpeg?im_w=720",
+          "https://a0.muscache.com/im/pictures/miso/Hosting-1134063815811220149/original/d8a4524b-5be4-418b-bfe5-4bd8a87ed52c.jpeg?im_w=720"
+        ]
+      },
+      {
+        id: "ab2",
+        kind: "airbnb",
+        fit: "best",
+        name: "Detached GuestHouse W/D + Parking",
+        area: "Culver City",
+        driveMin: "15–25 min",
+        price: "≈$189/晚 · $3,021 / 16晚",
+        parking: "free_on_site",
+        parkingNote: "车棚 2 个车位",
+        rating: "4.96 · 228 · Top 10%",
+        safety: "独立后院小屋，私密性好",
+        pros: "停车最稳、评价极好",
+        cons: "不是公寓门禁楼",
+        lat: 34.0248, lng: -118.3910,
+        url: "https://www.airbnb.com/rooms/51494474",
+        photos: [
+          "https://a0.muscache.com/im/pictures/miso/Hosting-51494474/original/bdb1c80c-f865-48c0-bb93-251207ea49c9.jpeg?im_w=720",
+          "https://a0.muscache.com/im/pictures/miso/Hosting-51494474/original/4ccb2a78-0f67-4b77-9166-73cc02e08f06.jpeg?im_w=720",
+          "https://a0.muscache.com/im/pictures/miso/Hosting-51494474/original/73276a12-4c45-4fa4-bbc5-c3ac39170eaf.jpeg?im_w=720"
+        ]
+      },
+      {
+        id: "ab3",
+        kind: "airbnb",
+        fit: "good",
+        name: "1 bd front house w AC, parking, Laundry",
+        area: "Culver City",
+        driveMin: "15–25 min",
+        price: "≈$162/晚 · $2,599 / 16晚",
+        parking: "free_on_site",
+        parkingNote: "指定车道车位 1 个",
+        rating: "4.84 · 75 · Guest favorite",
+        safety: "树线住宅街",
+        pros: "更省钱、独立小房子",
+        cons: "评价数少于前两名",
+        lat: 34.0275, lng: -118.3880,
+        url: "https://www.airbnb.com/rooms/925078864279121553",
+        photos: [
+          "https://a0.muscache.com/im/pictures/miso/Hosting-925078864279121553/original/5f19be22-036c-4b0e-8a85-a4093a588070.jpeg?im_w=720",
+          "https://a0.muscache.com/im/pictures/miso/Hosting-925078864279121553/original/720c148b-fd9c-4c66-ae41-d149f9eaaae2.jpeg?im_w=720",
+          "https://a0.muscache.com/im/pictures/miso/Hosting-925078864279121553/original/531be3cc-6513-4094-9767-f53e88fa131f.jpeg?im_w=720"
+        ]
+      },
+      {
+        id: "ab4",
+        kind: "airbnb",
+        fit: "good",
+        name: "Near beach walk to shops & dining",
+        area: "Palms / Culver 边缘",
+        driveMin: "15–25 min",
+        price: "先确认整段 16 晚是否可订",
+        parking: "free_on_site",
+        parkingNote: "指定车位；二楼楼梯",
+        rating: "4.83 · 375 · Superhost",
+        safety: "长评多、专业管理",
+        pros: "评价量很大",
+        cons: "日期可能拼不出整段",
+        lat: 34.0240, lng: -118.4105,
+        url: "https://www.airbnb.com/rooms/9139954",
+        photos: [
+          "https://a0.muscache.com/im/pictures/miso/Hosting-9139954/original/971c0cff-9fda-445d-8d42-85ef0623119b.jpeg?im_w=720",
+          "https://a0.muscache.com/im/pictures/miso/Hosting-9139954/original/cb577d01-7092-40a1-857f-0e79da5d8ab4.jpeg?im_w=720",
+          "https://a0.muscache.com/im/pictures/miso/Hosting-9139954/original/60bea081-ff35-46ba-9fed-24ccf45edf4b.jpeg?im_w=720"
+        ]
+      },
+      {
+        id: "ab5",
+        kind: "airbnb",
+        fit: "good",
+        name: "Walk to grocery store + free parking",
+        area: "Culver City / Palms",
+        driveMin: "15–25 min",
+        price: "先确认 16 晚总价",
+        parking: "free_on_site",
+        parkingNote: "Gated 指定车位；二楼",
+        rating: "4.87 · 343 · Superhost",
+        safety: "门禁车位 + 自助入住",
+        pros: "长评多、厨房洗衣齐全",
+        cons: "需再核总价",
+        lat: 34.0225, lng: -118.4070,
+        url: "https://www.airbnb.com/rooms/13660425",
+        photos: [
+          "https://a0.muscache.com/im/pictures/prohost-api/Hosting-13660425/original/ef73ecd4-b697-41a2-98d3-04783d8cf248.jpeg?im_w=720",
+          "https://a0.muscache.com/im/pictures/prohost-api/Hosting-13660425/original/cdc78c2a-2085-4fc8-b757-70a67d4ebb5d.jpeg?im_w=720",
+          "https://a0.muscache.com/im/pictures/prohost-api/Hosting-13660425/original/936c81bd-b453-4742-b436-c09bee36090a.jpeg?im_w=720"
+        ]
+      },
+      {
+        id: "ab6",
+        kind: "airbnb",
+        fit: "good",
+        name: "1BR + Balcony · Brentwood / SM",
+        area: "Brentwood / Santa Monica 交界",
+        driveMin: "8–15 min",
+        price: "离诊所更近；核车库与总价",
+        parking: "free_on_site",
+        parkingNote: "文案写 garage（务必确认）",
+        rating: "4.81 · 191",
+        safety: "安静住宅区",
+        pros: "通勤最短候选之一",
+        cons: "车库需确认；价位可能偏紧",
+        lat: 34.0525, lng: -118.4755,
+        url: "https://www.airbnb.com/rooms/644171489351585560",
+        photos: [
+          "https://a0.muscache.com/im/pictures/62b9e51d-97a0-4ce1-a7a1-968c122467ba.jpg?im_w=720",
+          "https://a0.muscache.com/im/pictures/miso/Hosting-644171489351585560/original/c739a1e3-0e8c-4c1b-8c18-b6b57ccd7360.jpeg?im_w=720",
+          "https://a0.muscache.com/im/pictures/miso/Hosting-644171489351585560/original/ac26c0f7-1da1-463a-b065-547a227bc44d.jpeg?im_w=720"
+        ]
+      },
+      {
+        id: "ab7",
+        kind: "airbnb",
+        fit: "caution",
+        name: "Charming bungalow in Culver City",
+        area: "Culver City",
+        driveMin: "15–25 min",
+        price: "≈$145/晚 · $2,316 / 16晚",
+        parking: "free_on_site",
+        parkingNote: "停车说明有冲突 → 私信确认",
+        rating: "4.89 · 100 · Top 10%",
+        safety: "安静街；布局 railroad",
+        pros: "便宜、评分高",
+        cons: "停车说明矛盾；无洗衣",
+        lat: 34.0210, lng: -118.3935,
+        url: "https://www.airbnb.com/rooms/1219203681334173119",
+        photos: [
+          "https://a0.muscache.com/im/pictures/hosting/Hosting-1219203681334173119/original/7b650a5a-2c14-4883-a18a-01f7d56fdeaa.jpeg?im_w=720",
+          "https://a0.muscache.com/im/pictures/hosting/Hosting-1219203681334173119/original/f767d55f-79ed-4ec4-8c9c-374341801750.jpeg?im_w=720",
+          "https://a0.muscache.com/im/pictures/hosting/Hosting-1219203681334173119/original/ad58b7a0-b2b6-4927-be19-84aeb853e8fe.jpeg?im_w=720"
+        ]
+      },
+      {
+        id: "ab8",
+        kind: "airbnb",
+        fit: "caution",
+        name: "Del Rey Private Modern Ocean Breeze Suite",
+        area: "Del Rey",
+        driveMin: "20–30 min",
+        price: "≈$138/晚 · $2,210 / 16晚",
+        parking: "free_street",
+        parkingNote: "实质多为街停",
+        rating: "4.92 · 407 · Guest favorite",
+        safety: "评价极好，街停对女生单独减分",
+        pros: "超高评价、很便宜",
+        cons: "街停；kitchenette",
+        lat: 33.9915, lng: -118.4240,
+        url: "https://www.airbnb.com/rooms/2192641",
+        photos: [
+          "https://a0.muscache.com/im/pictures/airflow/Hosting-2192641/original/4059b919-c57d-410e-95f8-3311e8d9eb73.jpg?im_w=720",
+          "https://a0.muscache.com/im/pictures/airflow/Hosting-2192641/original/4059b919-c57d-410e-95f8-3311e8d9eb73.jpg?im_w=1200",
+          "https://a0.muscache.com/im/pictures/airflow/Hosting-2192641/original/4059b919-c57d-410e-95f8-3311e8d9eb73.jpg?im_w=480"
+        ]
+      },
+      {
+        id: "h1",
+        kind: "hotel",
+        fit: "ok",
+        name: "Courtyard Century City / Beverly Hills",
+        area: "Century City",
+        driveMin: "10–15 min",
+        price: "房价另计；停车贵，总价易超预算",
+        parking: "paid",
+        parkingNote: "约 $45/天",
+        rating: "万豪 Courtyard · Bonvoy",
+        safety: "正规酒店前台",
+        pros: "离诊所近、积点",
+        cons: "停车贵",
+        lat: 34.0532, lng: -118.4148,
+        url: "https://www.marriott.com/en-us/hotels/laxce-courtyard-los-angeles-century-city-beverly-hills/overview/",
+        photos: [
+          "https://cache.marriott.com/content/dam/marriott-renditions/LAXCE/laxce-guestroom-0054-hor-wide.jpg?output-quality=70&interpolation=progressive-bilinear&downsize=750px:*",
+          "https://cache.marriott.com/content/dam/marriott-renditions/LAXWF/laxwf-outdoor-heatedpool-5445-hor-wide.jpg?output-quality=70&interpolation=progressive-bilinear&downsize=480px:*",
+          "https://cache.marriott.com/is/image/marriotts7prod/fi-laxma-exterior-30687:Wide-Hor?wid=480"
+        ]
+      },
+      {
+        id: "h2",
+        kind: "hotel",
+        fit: "ok",
+        name: "Four Points Los Angeles Westside",
+        area: "Culver City / Playa",
+        driveMin: "15–25 min",
+        price: "房价另计；西区停车相对便宜",
+        parking: "paid",
+        parkingNote: "约 $27/天",
+        rating: "万豪 Four Points · Bonvoy",
+        safety: "正规酒店",
+        pros: "停车费相对低、积点",
+        cons: "仍非免费停车",
+        lat: 33.9788, lng: -118.3895,
+        url: "https://www.marriott.com/en-us/hotels/laxwf-four-points-los-angeles-westside/overview/",
+        photos: [
+          "https://cache.marriott.com/content/dam/marriott-renditions/LAXWF/laxwf-outdoor-heatedpool-5445-hor-wide.jpg?output-quality=70&interpolation=progressive-bilinear&downsize=750px:*",
+          "https://cache.marriott.com/content/dam/marriott-renditions/LAXWF/laxwf-outdoor-heatedpool-5445-hor-wide.jpg?output-quality=70&interpolation=progressive-bilinear&downsize=480px:*",
+          "https://cache.marriott.com/is/image/marriotts7prod/fi-laxma-exterior-30687:Wide-Hor?wid=480"
+        ]
+      },
+      {
+        id: "h3",
+        kind: "hotel",
+        fit: "ok",
+        name: "Residence Inn Marina del Rey",
+        area: "Marina del Rey",
+        driveMin: "20–30 min",
+        price: "套房有厨房；停车贵",
+        parking: "paid",
+        parkingNote: "valet 约 $55/天",
+        rating: "万豪 RI · 含早",
+        safety: "酒店式安全感高",
+        pros: "厨房 + 早餐，长住方便",
+        cons: "停车贵",
+        lat: 33.9806, lng: -118.4510,
+        url: "https://www.marriott.com/en-us/hotels/laxma-residence-inn-marina-del-rey/overview/",
+        photos: [
+          "https://cache.marriott.com/is/image/marriotts7prod/fi-laxma-exterior-30687:Wide-Hor?wid=750",
+          "https://cache.marriott.com/content/dam/marriott-renditions/LAXWF/laxwf-outdoor-heatedpool-5445-hor-wide.jpg?output-quality=70&interpolation=progressive-bilinear&downsize=480px:*",
+          "https://cache.marriott.com/content/dam/marriott-renditions/LAXCE/laxce-guestroom-0054-hor-wide.jpg?output-quality=70&interpolation=progressive-bilinear&downsize=480px:*"
+        ]
+      },
+      {
+        id: "h4",
+        kind: "hotel",
+        fit: "good",
+        name: "Residence Inn Manhattan Beach",
+        area: "Manhattan Beach",
+        driveMin: "25–40 min",
+        price: "可能免费停车；通勤更远",
+        parking: "free_on_site",
+        parkingNote: "资料写 Free parking（预订页再确认）",
+        rating: "万豪 RI · 含早厨房",
+        safety: "South Bay 住宅感较好",
+        pros: "免费停车 + 厨房 + 积点",
+        cons: "离诊所最远",
+        lat: 33.9018, lng: -118.3870,
+        url: "https://www.marriott.com/en-us/hotels/laxmb-residence-inn-los-angeles-lax-manhattan-beach/overview/",
+        photos: [
+          "https://cache.marriott.com/is/image/marriotts7prod/fi-laxax-exterior-21952:Wide-Hor?wid=750",
+          "https://cache.marriott.com/is/image/marriotts7prod/fi-laxma-exterior-30687:Wide-Hor?wid=480",
+          "https://cache.marriott.com/content/dam/marriott-renditions/LAXWF/laxwf-outdoor-heatedpool-5445-hor-wide.jpg?output-quality=70&interpolation=progressive-bilinear&downsize=480px:*"
+        ]
+      }
+    ];
+
+    // Fix ab1 primary photo: use a reliable Culver listing look-alike if broken; fetch better later
+    // Prefer unique listing photos where we have them.
+
+    const fitLabel = { best: "优先", good: "值得看", ok: "备选", caution: "慎选" };
+    const parkingLabel = {
+      free_on_site: "场地免费停",
+      free_street: "街停",
+      paid: "收费停车"
+    };
+
+    let filter = "all";
+    let selectedId = "ab1";
+    const markers = {};
+
+    const map = L.map("map").setView([CLINIC.lat, CLINIC.lng], 11);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: "&copy; OpenStreetMap"
+    }).addTo(map);
+
+    const clinicIcon = L.divIcon({
+      className: "",
+      html: `<div style="width:16px;height:16px;border-radius:50%;background:#b91c1c;border:2px solid #fff;box-shadow:0 0 0 2px #b91c1c88"></div>`,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8]
+    });
+    L.marker([CLINIC.lat, CLINIC.lng], { icon: clinicIcon })
+      .addTo(map)
+      .bindTooltip(CLINIC.name, { permanent: false, className: "place-tip" });
+
+    function colorFor(o) {
+      if (o.kind === "hotel") return "#7c3aed";
+      if (o.fit === "best") return "#16a34a";
+      if (o.fit === "good") return "#2563eb";
+      if (o.fit === "caution") return "#d97706";
+      return "#57534e";
+    }
+
+    function makeIcon(o, selected) {
+      const c = colorFor(o);
+      const size = selected ? 18 : 14;
+      return L.divIcon({
+        className: "",
+        html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${c};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25)"></div>`,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2]
+      });
+    }
+
+    function passes(o) {
+      if (filter === "airbnb") return o.kind === "airbnb";
+      if (filter === "hotel") return o.kind === "hotel";
+      if (filter === "free") return o.parking === "free_on_site";
+      if (filter === "best") return o.fit === "best" || o.fit === "good";
+      return true;
+    }
+
+    function select(id, pan = true) {
+      selectedId = id;
+      const o = OPTIONS.find((x) => x.id === id);
+      renderList();
+      Object.entries(markers).forEach(([mid, m]) => {
+        const opt = OPTIONS.find((x) => x.id === mid);
+        if (opt) m.setIcon(makeIcon(opt, mid === id));
+      });
+      if (o && pan) map.flyTo([o.lat, o.lng], 13, { duration: 0.6 });
+    }
+
+    function renderMarkers() {
+      Object.values(markers).forEach((m) => map.removeLayer(m));
+      Object.keys(markers).forEach((k) => delete markers[k]);
+      OPTIONS.filter(passes).forEach((o) => {
+        const m = L.marker([o.lat, o.lng], { icon: makeIcon(o, o.id === selectedId) })
+          .addTo(map)
+          .bindTooltip(o.name, { className: "place-tip" });
+        m.on("click", () => select(o.id, false));
+        markers[o.id] = m;
+      });
+    }
+
+    function renderList() {
+      const list = document.getElementById("list");
+      const items = OPTIONS.filter(passes);
+      list.innerHTML = items.map((o) => {
+        const photos = (o.photos || []).slice(0, 3);
+        const cover = photos[0] || "";
+        return `
+          <article class="card ${o.id === selectedId ? "selected" : ""}" data-id="${o.id}">
+            <img class="cover" src="${cover}" alt="${o.name}" loading="lazy" onerror="this.style.background='#d6d3d1';this.removeAttribute('src')" />
+            <div class="card-body">
+              <div class="row">
+                <span class="pill ${o.kind}">${o.kind === "airbnb" ? "Airbnb" : "酒店"}</span>
+                <span class="pill ${o.fit}">${fitLabel[o.fit]}</span>
+                <span class="pill">${parkingLabel[o.parking]}</span>
+              </div>
+              <div class="name">${o.name}</div>
+              <div class="meta">
+                ${o.area} · 去诊所 ${o.driveMin}<br/>
+                ${o.price}<br/>
+                ${o.rating}<br/>
+                停车：${o.parkingNote}
+              </div>
+              <div class="actions">
+                <a href="${o.url}" target="_blank" rel="noopener">打开详情</a>
+                <a href="#" data-focus="${o.id}">在地图定位</a>
+              </div>
+            </div>
+            <div class="thumbs">
+              ${photos.map((p) => `<img src="${p}" alt="" loading="lazy" onerror="this.style.opacity=.3" />`).join("")}
+            </div>
+          </article>`;
+      }).join("");
+
+      list.querySelectorAll(".card").forEach((el) => {
+        el.addEventListener("click", (e) => {
+          if (e.target.closest("a[href^='http']")) return;
+          e.preventDefault();
+          select(el.dataset.id, true);
+        });
+      });
+      list.querySelectorAll("[data-focus]").forEach((a) => {
+        a.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          select(a.getAttribute("data-focus"), true);
+        });
+      });
+    }
+
+    document.querySelectorAll(".toolbar button[data-filter]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        filter = btn.dataset.filter;
+        document.querySelectorAll(".toolbar button[data-filter]").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        renderMarkers();
+        renderList();
+      });
+    });
+
+    renderMarkers();
+    renderList();
+  </script>
+</body>
+</html>
